@@ -48,7 +48,7 @@ export default function OnboardingPage() {
 
       // If all basic fields are filled, skip onboarding
       if (profile.school_year && profile.gender && profile.bio) {
-        router.push("/dashboard");
+        router.push("/home");
         return;
       }
 

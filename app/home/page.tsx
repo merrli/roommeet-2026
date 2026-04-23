@@ -19,7 +19,7 @@ type Roommate = {
 };
 
 type HousingInfo = {
-  roomNumber: string;
+  roomnumber: string;
   building: string;
   roommates: Roommate[];
 };
@@ -33,36 +33,37 @@ export default function HomePage() {
     const getHousingInfo = async () => {
       const supabase = createClient();
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/auth/login");
         return;
       }
 
       const username = user.user_metadata?.username;
-      const res = await fetch(`/api/getUserInfo?username=${username}`);
-      const data = await res.json();
 
-      if (!res.ok || !data.user.room_id) {
+      // Get user info
+      const userRes = await fetch(`/api/getUserInfo?username=${username}`);
+      const userData = await userRes.json();
+
+      if (!userRes.ok || !userData.user.room_id) {
         setLoading(false);
         return;
       }
 
-      const roomId = data.user.room_id;
+      const roomId = userData.user.room_id;
 
-      // Get room and building info
-      const { data: roomData, error: roomError } = await supabase
-        .from("rooms")
-        .select("roomNumber, building_id, buildings(name)")
-        .eq("id", roomId)
-        .single();
+      // Get room info via API route
+      const roomRes = await fetch(`/api/getRoomInfo?room_id=${roomId}`);
+      const roomData = await roomRes.json();
 
-      if (roomError || !roomData) {
+      if (!roomRes.ok || !roomData.room) {
         setLoading(false);
         return;
       }
+
+      // Get building info via API route
+      const buildingRes = await fetch(`/api/getBuildingInfo?building_id=${roomData.room.building_id}`);
+      const buildingData = await buildingRes.json();
 
       // Get roommates (other users with same room_id)
       const { data: roommatesData, error: roommatesError } = await supabase
@@ -72,8 +73,8 @@ export default function HomePage() {
         .neq("username", username);
 
       setHousing({
-        roomNumber: roomData.roomNumber,
-        building: (roomData.buildings as any)?.name ?? "Unknown",
+        roomnumber: roomData.room.roomnumber,
+        building: buildingData.building?.name ?? "Unknown",
         roommates: roommatesError ? [] : roommatesData ?? [],
       });
 
@@ -104,7 +105,7 @@ export default function HomePage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Room Number</p>
-                    <p className="font-medium">{housing.roomNumber}</p>
+                    <p className="font-medium">{housing.roomnumber}</p>
                   </div>
                 </div>
                 <div>
