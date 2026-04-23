@@ -33,19 +33,19 @@ export function LoginForm({
 
     try {
       // Step 1: look up email from username
-      const res = await fetch(`/api/users?username=${username}`);
+      const res = await fetch(`/api/getUserInfo?username=${username}`);
       const data = await res.json();
 
       if (!res.ok) throw new Error("Username not found");
 
       // Step 2: sign in with the email we got back
       const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
+        email: data.user.email,
         password,
       });
 
       if (error) throw error;
-      router.push("/protected");
+      router.push("/onboarding");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {

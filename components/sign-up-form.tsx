@@ -58,7 +58,7 @@ export function SignUpForm({
 
       // Step 2: Insert into your users table
   console.log("About to insert user:", { username, email, password, first_name: firstName, last_name: lastName });
-      const res = await fetch("/api/users", {
+      const res = await fetch("/api/registerUser", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -71,8 +71,6 @@ export function SignUpForm({
       });
       
       const text = await res.text();
-    console.log("API status:", res.status);
-    console.log("API response:", text);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to create user profile");
