@@ -76,7 +76,7 @@ export function SignUpForm({
         throw new Error(data.error || "Failed to create user profile");
       }
 
-      router.push("/auth/sign-up-success");
+      router.push("/onboarding");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
