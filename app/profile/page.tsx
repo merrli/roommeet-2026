@@ -35,7 +35,22 @@ type UserProfile = {
   } | null;
 };
 
-type Section = "profile" | "personables" | "password" | "rejected";
+type Section = "profile" | "personables" | "password" | "rejected" | "room-swap";
+
+type RoomOption = {
+  id: string;
+  roomnumber: string;
+  buildings: { name: string } | null;
+};
+
+type SwapRequest = {
+  id: string;
+  current_room_id: string | null;
+  target_room_id: string | null;
+  message: string | null;
+  status: string;
+  created_at: string;
+};
 
 type RejectedUser = {
   id: string;
@@ -83,6 +98,15 @@ export default function ProfilePage() {
   const [rejectedUsers, setRejectedUsers] = useState<RejectedUser[]>([]);
   const [loadingRejected, setLoadingRejected] = useState(false);
   const [pendingUnreject, setPendingUnreject] = useState<string | null>(null);
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [allRooms, setAllRooms] = useState<RoomOption[]>([]);
+  const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([]);
+  const [targetRoomId, setTargetRoomId] = useState("");
+  const [swapMessage, setSwapMessage] = useState("");
+  const [loadingSwap, setLoadingSwap] = useState(false);
+  const [submittingSwap, setSubmittingSwap] = useState(false);
+  const [cancellingSwap, setCancellingSwap] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -101,6 +125,8 @@ export default function ProfilePage() {
 
       if (res.ok) {
         setProfile(data.user);
+        setCurrentRoomId(data.user.room_id ?? null);
+        setCurrentUserId(data.user.id);
         setForm({
           first_name: data.user.first_name || "",
           last_name: data.user.last_name || "",
@@ -121,6 +147,58 @@ export default function ProfilePage() {
 
     loadProfile();
   }, [router]);
+
+  const loadRoomSwapData = async (userId: string) => {
+    setLoadingSwap(true);
+    const [roomsRes, requestsRes] = await Promise.all([
+      fetch("/api/getRoomInfo?all=true"),
+      fetch(`/api/roomSwapRequest?user_id=${userId}`),
+    ]);
+    const roomsData = await roomsRes.json();
+    const requestsData = await requestsRes.json();
+    setAllRooms(roomsData.rooms ?? []);
+    setSwapRequests(requestsData.requests ?? []);
+    setLoadingSwap(false);
+  };
+
+  const handleSwapSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetRoomId) return;
+    setSubmittingSwap(true);
+    setMessage(null);
+    setError(null);
+
+    const res = await fetch("/api/roomSwapRequest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: currentUserId,
+        current_room_id: currentRoomId,
+        target_room_id: targetRoomId,
+        message: swapMessage || null,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Failed to submit request");
+    } else {
+      setMessage("Room swap request submitted!");
+      setTargetRoomId("");
+      setSwapMessage("");
+      setSwapRequests((prev) => [data.request, ...prev]);
+    }
+    setSubmittingSwap(false);
+  };
+
+  const handleCancelSwap = async (id: string) => {
+    setCancellingSwap(id);
+    const res = await fetch(`/api/roomSwapRequest?id=${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setSwapRequests((prev) => prev.filter((r) => r.id !== id));
+    }
+    setCancellingSwap(null);
+  };
 
   const loadRejectedUsers = async () => {
     setLoadingRejected(true);
@@ -318,6 +396,14 @@ export default function ProfilePage() {
             }`}
           >
             Rejected Users
+          </button>
+          <button
+            onClick={() => { setActiveSection("room-swap"); setMessage(null); setError(null); loadRoomSwapData(currentUserId); }}
+            className={`text-left text-sm px-3 py-2 rounded-md transition-colors ${
+              activeSection === "room-swap" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+            }`}
+          >
+            Room Swap
           </button>
         </div>
 
@@ -680,6 +766,127 @@ export default function ProfilePage() {
                   </Card>
                 ))
               )}
+            </div>
+          )}
+
+          {/* Room Swap Section */}
+          {activeSection === "room-swap" && (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-xl font-bold">Room Swap</h2>
+                <p className="text-sm text-muted-foreground">
+                  Request to swap to a different room. An administrator will review your request.
+                </p>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>New Request</CardTitle>
+                  <CardDescription>Select a room you would like to move to</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loadingSwap ? (
+                    <p className="text-sm text-muted-foreground">Loading rooms...</p>
+                  ) : (
+                    <form onSubmit={handleSwapSubmit} className="flex flex-col gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="target_room">Target Room</Label>
+                        <select
+                          id="target_room"
+                          required
+                          value={targetRoomId}
+                          onChange={(e) => setTargetRoomId(e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                        >
+                          <option value="" disabled>Select a room</option>
+                          {allRooms
+                            .filter((r) => r.id !== currentRoomId)
+                            .map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.buildings?.name ?? "Unknown Building"} — Room {r.roomnumber}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="swap_message">Message (optional)</Label>
+                        <textarea
+                          id="swap_message"
+                          placeholder="Explain why you'd like to swap rooms..."
+                          value={swapMessage}
+                          onChange={(e) => setSwapMessage(e.target.value)}
+                          maxLength={500}
+                          rows={3}
+                          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm resize-none"
+                        />
+                      </div>
+                      <Button type="submit" disabled={submittingSwap || !targetRoomId}>
+                        {submittingSwap ? "Submitting..." : "Submit Request"}
+                      </Button>
+                    </form>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-semibold">Your Requests</h3>
+                {loadingSwap ? (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                ) : swapRequests.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <p className="text-sm text-muted-foreground">No swap requests yet.</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  swapRequests.map((req) => (
+                    <Card key={req.id}>
+                      <CardContent className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex flex-col gap-1">
+                          {(() => {
+                            const from = allRooms.find((r) => r.id === req.current_room_id);
+                            const to = allRooms.find((r) => r.id === req.target_room_id);
+                            return (
+                              <p className="text-sm font-medium">
+                                {from?.buildings?.name ?? "Unknown"} — Room {from?.roomnumber ?? "?"}{" "}
+                                <span className="text-muted-foreground font-normal">requested to swap to</span>{" "}
+                                {to?.buildings?.name ?? "Unknown"} — Room {to?.roomnumber ?? "?"}
+                              </p>
+                            );
+                          })()}
+                          {req.message && (
+                            <p className="text-xs text-muted-foreground">{req.message}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(req.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                            req.status === "pending"
+                              ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                              : req.status === "approved"
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                          }`}>
+                            {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                          </span>
+                          {req.status === "pending" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={cancellingSwap === req.id}
+                              onClick={() => handleCancelSwap(req.id)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
             </div>
           )}
         </div>
