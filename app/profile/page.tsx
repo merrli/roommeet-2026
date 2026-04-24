@@ -35,7 +35,18 @@ type UserProfile = {
   } | null;
 };
 
-type Section = "profile" | "personables" | "password";
+type Section = "profile" | "personables" | "password" | "rejected";
+
+type RejectedUser = {
+  id: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  bio: string;
+  school_year: string;
+  gender: string;
+  profile_picture: string | null;
+};
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -69,6 +80,9 @@ export default function ProfilePage() {
   });
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [rejectedUsers, setRejectedUsers] = useState<RejectedUser[]>([]);
+  const [loadingRejected, setLoadingRejected] = useState(false);
+  const [pendingUnreject, setPendingUnreject] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -107,6 +121,39 @@ export default function ProfilePage() {
 
     loadProfile();
   }, [router]);
+
+  const loadRejectedUsers = async () => {
+    setLoadingRejected(true);
+    const supabase = createClient();
+    const { data: userData } = await supabase
+      .from("users")
+      .select("rejected_users")
+      .eq("username", username)
+      .single();
+
+    const rejectedIds: string[] = userData?.rejected_users ?? [];
+    if (rejectedIds.length > 0) {
+      const { data } = await supabase
+        .from("users")
+        .select("id, username, first_name, last_name, bio, school_year, gender, profile_picture")
+        .in("id", rejectedIds);
+      setRejectedUsers(data ?? []);
+    } else {
+      setRejectedUsers([]);
+    }
+    setLoadingRejected(false);
+  };
+
+  const handleUnreject = async (user: RejectedUser) => {
+    setPendingUnreject(user.username);
+    await fetch(`/api/rejectUsers?username=${username}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rejected_user_id: user.id }),
+    });
+    setRejectedUsers((prev) => prev.filter((u) => u.username !== user.username));
+    setPendingUnreject(null);
+  };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -264,6 +311,14 @@ export default function ProfilePage() {
           >
             Change Password
           </button>
+          <button
+            onClick={() => { setActiveSection("rejected"); setMessage(null); setError(null); loadRejectedUsers(); }}
+            className={`text-left text-sm px-3 py-2 rounded-md transition-colors ${
+              activeSection === "rejected" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+            }`}
+          >
+            Rejected Users
+          </button>
         </div>
 
         {/* Main Content */}
@@ -337,13 +392,18 @@ export default function ProfilePage() {
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="gender">Gender</Label>
-                      <Input
+                      <select
                         id="gender"
-                        type="text"
-                        placeholder="e.g. Male, Female, Non-binary..."
                         value={form.gender}
                         onChange={(e) => setForm({ ...form, gender: e.target.value })}
-                      />
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                      >
+                        <option value="" disabled>Select your gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Nonbinary">Nonbinary</option>
+                        <option value="Prefer to not say">Prefer to not say</option>
+                    </select>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="bio">Bio</Label>
@@ -554,6 +614,73 @@ export default function ProfilePage() {
                 </form>
               </CardContent>
             </Card>
+          )}
+          {/* Rejected Users Section */}
+          {activeSection === "rejected" && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-xl font-bold">Rejected Users</h2>
+                <p className="text-sm text-muted-foreground">
+                  Users you have rejected will no longer appear in your matches. You can unreject them here.
+                </p>
+              </div>
+              {loadingRejected ? (
+                <p className="text-muted-foreground text-sm">Loading...</p>
+              ) : rejectedUsers.length === 0 ? (
+                <Card>
+                  <CardContent className="py-10 text-center">
+                    <p className="text-muted-foreground">You haven&apos;t rejected anyone yet.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                rejectedUsers.map((user) => (
+                  <Card key={user.username}>
+                    <CardContent className="py-4">
+                      <div className="flex items-start gap-4">
+                        <div className="w-16 h-16 rounded-full border overflow-hidden bg-muted flex items-center justify-center shrink-0">
+                          {user.profile_picture ? (
+                            <img
+                              src={user.profile_picture}
+                              alt={user.first_name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-xl text-muted-foreground">
+                              {user.first_name?.[0]?.toUpperCase() ?? "?"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">
+                              {user.first_name} {user.last_name}
+                            </p>
+                            <span className="text-xs text-muted-foreground">@{user.username}</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            {user.school_year && <span>{user.school_year}</span>}
+                            {user.gender && <span>· {user.gender}</span>}
+                          </div>
+                          {user.bio && (
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{user.bio}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={pendingUnreject === user.username}
+                            onClick={() => handleUnreject(user)}
+                          >
+                            Unreject
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </div>
       </div>

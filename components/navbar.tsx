@@ -49,6 +49,9 @@ export function Navbar() {
           <Link href="/profile" className="font-semibold text-sm hover:underline underline-offset-4">
             Profile
           </Link>
+          <Link href="/chatrooms" className="font-semibold text-sm hover:underline underline-offset-4">
+            Messages
+          </Link>
           {isAdmin && (
         <Link href="/admin" className="font-semibold text-sm hover:underline underline-offset-4 text-red-500">
             Admin
