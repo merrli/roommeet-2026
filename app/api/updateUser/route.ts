@@ -10,7 +10,7 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json();
-  const { school_year, gender, bio, room_id, first_name, last_name, profile_picture, personables  } = body;
+  const { school_year, gender, bio, room_id, first_name, last_name, profile_picture, personables, change_request } = body;
 
   // Build update object with only provided fields
   const updates: Record<string, any> = {};
@@ -22,6 +22,7 @@ export async function PATCH(request: Request) {
   if (last_name !== undefined) updates.last_name = last_name;
   if (profile_picture !== undefined) updates.profile_picture = profile_picture;
   if (personables !== undefined) updates.personables = personables;
+  if (change_request !== undefined) updates.change_request = change_request;
 
   const supabase = await createClient();
 
