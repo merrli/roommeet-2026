@@ -91,6 +91,16 @@ export async function PATCH(request: Request) {
 
   const supabase = await createClient();
 
+  const { data: changeRequest, error: fetchError } = await supabase
+    .from("change_requests")
+    .select("id, user_id, target_room_id")
+    .eq("id", id)
+    .single();
+
+  if (fetchError || !changeRequest) {
+    return NextResponse.json({ error: fetchError?.message ?? "Request not found" }, { status: 404 });
+  }
+
   const { data, error } = await supabase
     .from("change_requests")
     .update({ status })
@@ -100,6 +110,17 @@ export async function PATCH(request: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (status === "approved") {
+    const { error: userError } = await supabase
+      .from("users")
+      .update({ room_id: changeRequest.target_room_id })
+      .eq("id", changeRequest.user_id);
+
+    if (userError) {
+      return NextResponse.json({ error: userError.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ request: data });
